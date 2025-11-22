@@ -1,0 +1,36 @@
+---
+description: Rules for Supabase Edge Function examples under supabase/
+globs: ["supabase/**"]
+alwaysApply: true
+---
+
+# Platform: Supabase Edge Functions
+
+When working in `supabase/**`:
+
+- Use **Deno** runtime and Supabase’s recommended patterns.
+- Use `Deno.serve` as the entrypoint for functions.
+- Prefer TypeScript (`.ts`) for all Supabase examples.
+- Assume Supabase-provided env vars exist (e.g. SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_DB_URL) and **do not** hardcode secrets.
+- Keep functions short and stateless:
+  - Avoid long-running or CPU-heavy operations.
+  - Offload heavy tasks to queues or background workers where appropriate.
+- For auth-sensitive examples:
+  - Read JWT from `Authorization` header (`Bearer <token>`).
+  - Validate claims inside the function instead of trusting client params.
+- Organize examples roughly as:
+  - `supabase/<use-case>/index.ts` (function implementation)
+  - `supabase/<use-case>/README.md` (usage + explanation)
+  - `supabase/<use-case>/tests/` (optional tests or local scripts)
+
+When creating a **new Supabase example**:
+
+1. Read the relevant spec in `specs/` to understand the behavior.
+2. Implement a single edge function using `Deno.serve`, scoped to that use case.
+3. Add clear, minimal TypeScript types for request and response bodies.
+4. Document how to:
+   - Run locally via `supabase functions serve <name>`.
+   - Deploy via `supabase functions deploy <name>`.
+5. Avoid assumptions about:
+   - Frontend framework.
+   - Database schema beyond what is explicitly described in the spec or comments.

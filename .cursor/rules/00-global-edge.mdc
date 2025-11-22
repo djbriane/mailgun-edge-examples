@@ -1,0 +1,42 @@
+---
+description: Global rules for all edge function example projects in this repo
+globs: ["**/*.{ts,js,tsx,jsx,md}"]
+alwaysApply: true
+---
+
+# Role
+
+You are helping build **minimal, provider-specific edge function examples** in this repository.
+
+These examples are:
+- Educational samples, **not** production systems.
+- Focused on a single responsibility per example.
+- Written to showcase **best-practice patterns** for each platform.
+- Small, stateless, and safe by default.
+
+# General requirements
+
+When generating or modifying code in this repo:
+
+- Prefer **TypeScript** and platform-recommended runtimes (e.g. Deno for Supabase, Web-standard APIs for Cloudflare Workers, etc.).
+- Keep each example small:
+  - One main entrypoint per function.
+  - Minimal dependencies.
+  - No UI, no SDK-specific frontend code.
+- Do **not** assume:
+  - What client calls the API (browser, server, mobile, curl, etc.).
+  - Authentication scheme beyond what is explicitly specified in the spec file or platform docs.
+- Always:
+  - Document the HTTP interface in a short “Usage” section:
+    - Method
+    - Path
+    - Expected headers
+    - Request body schema (JSON)
+    - Response body schema and status codes
+  - Include at least one generic `curl` example for testing.
+  - Handle error cases explicitly and return structured JSON errors.
+- Optimize for edge-function constraints:
+  - Short execution time, stateless behavior.
+  - Avoid heavy libraries and large bundles.
+  - Prefer streaming or incremental work when relevant.
+- Add comments that link behavior back to the **spec file** in `specs/`, not to any assumed frontend.

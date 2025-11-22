@@ -1,0 +1,48 @@
+# ───────── General OS / Editor ─────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# ───────── Node / JavaScript ─────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+.pnpm-debug.log
+
+# ───────── Deno / Bundling ─────────
+deno.lock
+dist/
+build/
+.esbuild/
+
+# ───────── Cursor ─────────
+# Include rules (.cursor/rules/*) – DO NOT ignore
+.cursor/cache/
+.cursor/history*
+.cursor/tmp/
+# Explicitly keep rules
+!.cursor/rules/
+!.cursor/rules/*
+
+# ───────── Environment and credentials ─────────
+.env
+.env.*
+*.pem
+*.key
+
+# ───────── Logs / Coverage ─────────
+logs/
+*.log
+coverage/
+nyc_output/
+
+# ───────── Optional test artifacts ─────────
+.tmp/
+.cache/
+__pycache__/
+.tmp_tests/
+

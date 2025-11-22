@@ -1,0 +1,31 @@
+---
+description: Rules for Cloudflare Workers / edge examples under cloudflare/
+globs: ["cloudflare/**"]
+alwaysApply: true
+---
+
+# Platform: Cloudflare Workers
+
+When working in `cloudflare/**`:
+
+- Target the **Workers runtime**:
+  - Use Web-standard APIs (`Request`, `Response`, `fetch`, `URL`, `crypto.subtle`, etc.).
+  - Avoid Node-only APIs and large Node libraries.
+- Use TypeScript where possible and structure examples for `wrangler`:
+  - `cloudflare/<use-case>/src/index.ts`
+  - `cloudflare/<use-case>/wrangler.toml`
+- Keep Workers **small, stateless, and fast**:
+  - Avoid heavy CPU-bound work in the request path.
+  - Prefer short-lived I/O; use KV, Durable Objects, or external services for state if needed.
+- Security and config:
+  - Use bindings (secrets, KV, Durable Objects) instead of hardcoding secrets.
+  - Avoid logging sensitive data.
+- For all examples:
+  - Export a fetch handler: `export default { fetch(request, env, ctx) { ... } }` (or the equivalent recommended pattern).
+  - Explicitly validate and sanitize input from the request.
+  - Document how to:
+    - Run locally with `wrangler dev`.
+    - Deploy with `wrangler publish`.
+- Do not assume:
+  - Any particular domain or route path, beyond what is specified in the spec.
+  - Any Cloudflare WAF or firewall configuration; keep examples focused on the Worker itself.

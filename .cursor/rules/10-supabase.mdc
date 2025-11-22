@@ -6,31 +6,292 @@ alwaysApply: true
 
 # Platform: Supabase Edge Functions
 
-When working in `supabase/**`:
+Runtime: **Deno** with Web-standard APIs
 
-- Use **Deno** runtime and Supabase’s recommended patterns.
-- Use `Deno.serve` as the entrypoint for functions.
-- Prefer TypeScript (`.ts`) for all Supabase examples.
-- Assume Supabase-provided env vars exist (e.g. SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_DB_URL) and **do not** hardcode secrets.
-- Keep functions short and stateless:
-  - Avoid long-running or CPU-heavy operations.
-  - Offload heavy tasks to queues or background workers where appropriate.
-- For auth-sensitive examples:
-  - Read JWT from `Authorization` header (`Bearer <token>`).
-  - Validate claims inside the function instead of trusting client params.
-- Organize examples roughly as:
-  - `supabase/<use-case>/index.ts` (function implementation)
-  - `supabase/<use-case>/README.md` (usage + explanation)
-  - `supabase/<use-case>/tests/` (optional tests or local scripts)
+## File Structure
 
-When creating a **new Supabase example**:
+Follow this pattern for all examples:
 
-1. Read the relevant spec in `specs/` to understand the behavior.
-2. Implement a single edge function using `Deno.serve`, scoped to that use case.
-3. Add clear, minimal TypeScript types for request and response bodies.
-4. Document how to:
-   - Run locally via `supabase functions serve <name>`.
-   - Deploy via `supabase functions deploy <name>`.
-5. Avoid assumptions about:
-   - Frontend framework.
-   - Database schema beyond what is explicitly described in the spec or comments.
+```
+supabase/functions/
+├── example-name/
+│   ├── index.ts          # Main function code
+│   └── README.md         # Documentation
+└── _shared/
+    └── cors.ts           # Shared CORS headers
+```
+
+## CORS Handling
+
+### Create `_shared/cors.ts` (if not exists):
+
+```typescript
+export const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+```
+
+### Use in every function:
+
+```typescript
+import { corsHeaders } from '../_shared/cors.ts'
+
+Deno.serve(async (req) => {
+  // Handle CORS preflight
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
+
+  try {
+    // ... function logic
+    return new Response(
+      JSON.stringify(data),
+      { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200,
+      },
+    )
+  } catch (error) {
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400,
+      },
+    )
+  }
+})
+```
+
+## Function Template
+
+Use this as starting point for new functions:
+
+```typescript
+import { corsHeaders } from '../_shared/cors.ts'
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
+
+  try {
+    // 1. Parse request
+    const { param } = await req.json()
+
+    // 2. Get API credentials
+    const apiKey = Deno.env.get('API_KEY')
+    if (!apiKey) {
+      throw new Error('API_KEY not configured')
+    }
+
+    // 3. Call external API
+    const response = await fetch('https://api.example.com/endpoint', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({ param }),
+    })
+
+    if (!response.ok) {
+      throw new Error(`API error: ${response.statusText}`)
+    }
+
+    const data = await response.json()
+
+    // 4. Return result
+    return new Response(
+      JSON.stringify(data),
+      { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200,
+      },
+    )
+  } catch (error) {
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400,
+      },
+    )
+  }
+})
+```
+
+## Environment Variables
+
+Access via `Deno.env.get()`:
+
+```typescript
+const apiKey = Deno.env.get('MAILGUN_API_KEY')
+const domain = Deno.env.get('MAILGUN_DOMAIN')
+```
+
+Set locally in `.env.local`:
+```bash
+MAILGUN_API_KEY=key-xxxxx
+MAILGUN_DOMAIN=mg.example.com
+```
+
+Deploy secrets:
+```bash
+supabase secrets set MAILGUN_API_KEY=key-xxxxx
+```
+
+## Authentication (When Needed)
+
+Only add auth if the example specifically demonstrates it:
+
+```typescript
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+const authHeader = req.headers.get('Authorization')
+if (!authHeader) {
+  throw new Error('Missing authorization header')
+}
+
+const supabaseClient = createClient(
+  Deno.env.get('SUPABASE_URL') ?? '',
+  Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+  { global: { headers: { Authorization: authHeader } } }
+)
+
+const { data: { user }, error } = await supabaseClient.auth.getUser()
+if (error || !user) {
+  throw new Error('Not authenticated')
+}
+```
+
+## Importing Dependencies
+
+Prefer npm: specifier or esm.sh:
+
+```typescript
+// npm: specifier (recommended)
+import Stripe from 'npm:stripe@14'
+
+// esm.sh
+import { Resend } from 'https://esm.sh/resend@2'
+```
+
+## README Template
+
+```markdown
+# Function Name
+
+Brief description of what this does.
+
+## External API
+
+- **Service**: [API Name](https://docs-url.com)
+- **Endpoint**: `POST /v1/endpoint`
+- **What it does**: One sentence
+
+## Setup
+
+1. Get API key from [Service Dashboard](https://example.com)
+
+2. Set environment variables:
+   ```bash
+   supabase secrets set API_KEY=your_key_here
+   ```
+
+3. Deploy:
+   ```bash
+   supabase functions deploy function-name
+   ```
+
+## Usage
+
+```bash
+curl -i --location --request POST \
+  'https://project-ref.supabase.co/functions/v1/function-name' \
+  --header 'Authorization: Bearer ANON_KEY' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "param": "value"
+  }'
+```
+
+## Response
+
+```json
+{
+  "result": "success"
+}
+```
+
+## Local Development
+
+```bash
+supabase functions serve function-name --env-file .env.local
+```
+```
+
+## Testing Locally
+
+Document this pattern in README:
+
+```bash
+# Serve function
+supabase functions serve function-name --env-file .env.local
+
+# Test in another terminal
+curl -i --location --request POST 'http://localhost:54321/functions/v1/function-name' \
+  --header 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...' \
+  --header 'Content-Type: application/json' \
+  --data '{"test": "data"}'
+```
+
+## Common Patterns
+
+### Webhook verification (e.g., Stripe):
+
+```typescript
+import Stripe from 'npm:stripe@14'
+
+const signature = req.headers.get('stripe-signature')
+const webhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET')
+
+const stripe = new Stripe(Deno.env.get('STRIPE_API_KEY')!, {
+  apiVersion: '2023-10-16',
+})
+
+const event = stripe.webhooks.constructEvent(
+  await req.text(),
+  signature!,
+  webhookSecret!
+)
+```
+
+### FormData for APIs that require it (e.g., Mailgun):
+
+```typescript
+const formData = new FormData()
+formData.append('from', 'sender@example.com')
+formData.append('to', 'recipient@example.com')
+formData.append('subject', 'Hello')
+formData.append('text', 'Message body')
+
+const response = await fetch(`https://api.mailgun.net/v3/${domain}/messages`, {
+  method: 'POST',
+  headers: {
+    'Authorization': `Basic ${btoa(`api:${apiKey}`)}`,
+  },
+  body: formData,
+})
+```
+
+## When Creating New Examples
+
+1. Check `specs/` for requirements
+2. Create folder: `supabase/functions/example-name/`
+3. Copy template above into `index.ts`
+4. Implement the specific API integration
+5. Create README with complete documentation
+6. Test locally before committing
+7. Keep it simple - one API call, clear pattern

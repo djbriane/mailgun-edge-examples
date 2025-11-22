@@ -9,34 +9,97 @@ alwaysApply: true
 You are helping build **minimal, provider-specific edge function examples** in this repository.
 
 These examples are:
-- Educational samples, **not** production systems.
-- Focused on a single responsibility per example.
-- Written to showcase **best-practice patterns** for each platform.
-- Small, stateless, and safe by default.
+- Educational samples, **not** production systems
+- Focused on a single responsibility per example
+- Written to showcase **best-practice patterns** for each platform
+- Small, stateless, and safe by default
 
-# General requirements
+# General Requirements
 
-When generating or modifying code in this repo:
+## Code Style
 
-- Prefer **TypeScript** and platform-recommended runtimes (e.g. Deno for Supabase, Web-standard APIs for Cloudflare Workers, etc.).
+- Prefer **TypeScript** and platform-recommended runtimes
 - Keep each example small:
-  - One main entrypoint per function.
-  - Minimal dependencies.
-  - No UI, no SDK-specific frontend code.
-- Do **not** assume:
-  - What client calls the API (browser, server, mobile, curl, etc.).
-  - Authentication scheme beyond what is explicitly specified in the spec file or platform docs.
-- Always:
-  - Document the HTTP interface in a short “Usage” section:
-    - Method
-    - Path
-    - Expected headers
-    - Request body schema (JSON)
-    - Response body schema and status codes
-  - Include at least one generic `curl` example for testing.
-  - Handle error cases explicitly and return structured JSON errors.
-- Optimize for edge-function constraints:
-  - Short execution time, stateless behavior.
-  - Avoid heavy libraries and large bundles.
-  - Prefer streaming or incremental work when relevant.
-- Add comments that link behavior back to the **spec file** in `specs/`, not to any assumed frontend.
+  - One main entrypoint per function
+  - Minimal dependencies (prefer fetch API over SDK when possible)
+  - No UI, no SDK-specific frontend code
+- Use async/await, not callbacks
+- Return structured JSON for all responses
+
+## Error Handling
+
+```typescript
+try {
+  // Function logic
+  return new Response(
+    JSON.stringify(data),
+    { headers: { 'Content-Type': 'application/json' }, status: 200 }
+  )
+} catch (error) {
+  return new Response(
+    JSON.stringify({ error: error.message }),
+    { headers: { 'Content-Type': 'application/json' }, status: 400 }
+  )
+}
+```
+
+## Documentation Requirements
+
+Each example MUST include a README with:
+
+1. **Brief description** (1-2 sentences)
+2. **External API** section:
+   - Service name and docs link
+   - What the integration does
+3. **Setup** section:
+   - Environment variables needed
+   - How to set them
+4. **Usage** section:
+   - Complete curl example
+   - Request body schema
+   - Response body schema
+5. **Local testing** instructions
+
+## What NOT to Include
+
+- Authentication logic (unless that's the point of the example)
+- Database operations (unless that's the point)
+- Retry logic or rate limiting
+- Complex validation libraries
+- Multiple API calls in one function
+- Business logic beyond demonstrating the API pattern
+
+## Environment Variables
+
+- Never hardcode API keys or secrets
+- Use descriptive names: `MAILGUN_API_KEY`, `STRIPE_WEBHOOK_SECRET`
+- Document all required variables in README
+- Use platform-standard access patterns
+
+## API Integration Patterns
+
+Prefer simple fetch calls:
+
+```typescript
+const response = await fetch('https://api.example.com/endpoint', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${apiKey}`,
+  },
+  body: JSON.stringify(payload),
+})
+
+if (!response.ok) {
+  throw new Error(`API error: ${response.statusText}`)
+}
+
+const data = await response.json()
+```
+
+## Edge Function Constraints
+
+- Short execution time, stateless behavior
+- Avoid heavy libraries and large bundles
+- Handle CORS explicitly when needed
+- Return responses quickly (avoid blocking operations)

@@ -1,0 +1,396 @@
+---
+description: Rules for AWS Lambda@Edge examples under aws-lambda-edge/
+globs: ["aws-lambda-edge/**"]
+alwaysApply: true
+---
+
+# Platform: AWS Lambda@Edge
+
+Runtime: **Node.js** (triggered by CloudFront events)
+
+## File Structure
+
+Follow this pattern for all examples:
+
+```
+aws-lambda-edge/
+├── example-name/
+│   ├── index.js              # Lambda function code
+│   ├── cloudformation.yaml   # Infrastructure (optional)
+│   └── README.md
+```
+
+## Lambda Function Format
+
+Lambda@Edge uses CloudFront event structure:
+
+```javascript
+exports.handler = async (event) => {
+  const request = event.Records[0].cf.request
+
+  try {
+    // 1. Parse request (if needed)
+    let body = {}
+    if (request.body && request.body.data) {
+      const bodyData = Buffer.from(request.body.data, 'base64').toString('utf-8')
+      body = JSON.parse(bodyData)
+    }
+
+    // 2. Get API credentials
+    const apiKey = process.env.API_KEY
+    if (!apiKey) {
+      return errorResponse('API_KEY not configured', 500)
+    }
+
+    // 3. Call external API
+    const fetch = (await import('node-fetch')).default
+    const response = await fetch('https://api.example.com/endpoint', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(body),
+    })
+
+    if (!response.ok) {
+      throw new Error(`API error: ${response.statusText}`)
+    }
+
+    const data = await response.json()
+
+    // 4. Return CloudFront response
+    return {
+      status: '200',
+      statusDescription: 'OK',
+      headers: {
+        'content-type': [{ key: 'Content-Type', value: 'application/json' }],
+        'access-control-allow-origin': [{ key: 'Access-Control-Allow-Origin', value: '*' }],
+      },
+      body: JSON.stringify(data),
+    }
+  } catch (error) {
+    return errorResponse(error.message, 400)
+  }
+}
+
+// Helper function for error responses
+function errorResponse(message, status) {
+  return {
+    status: String(status),
+    statusDescription: 'Error',
+    headers: {
+      'content-type': [{ key: 'Content-Type', value: 'application/json' }],
+      'access-control-allow-origin': [{ key: 'Access-Control-Allow-Origin', value: '*' }],
+    },
+    body: JSON.stringify({ error: message }),
+  }
+}
+```
+
+## CloudFront Event Types
+
+Lambda@Edge can trigger on 4 event types:
+
+1. **viewer-request** - Before CloudFront forwards request to origin
+2. **origin-request** - Before CloudFront forwards to origin (after cache miss)
+3. **origin-response** - After CloudFront receives response from origin
+4. **viewer-response** - Before CloudFront returns response to viewer
+
+**For API examples, use `viewer-request` or `origin-request`**
+
+## Environment Variables
+
+Access via `process.env`:
+
+```javascript
+const apiKey = process.env.MAILGUN_API_KEY
+const domain = process.env.MAILGUN_DOMAIN
+```
+
+Set via AWS Lambda Console or CloudFormation:
+```yaml
+Environment:
+  Variables:
+    MAILGUN_API_KEY: !Ref MailgunApiKey
+    MAILGUN_DOMAIN: mg.example.com
+```
+
+## CloudFront Response Format
+
+Lambda@Edge requires specific response format:
+
+```javascript
+{
+  status: '200',                    // String, not number!
+  statusDescription: 'OK',
+  headers: {
+    'content-type': [{              // Array of objects
+      key: 'Content-Type',
+      value: 'application/json'
+    }],
+    'access-control-allow-origin': [{
+      key: 'Access-Control-Allow-Origin',
+      value: '*'
+    }]
+  },
+  body: JSON.stringify(data)        // Must be string
+}
+```
+
+## CORS Handling
+
+Handle CORS in CloudFront response format:
+
+```javascript
+// Check for OPTIONS
+if (request.method === 'OPTIONS') {
+  return {
+    status: '204',
+    statusDescription: 'No Content',
+    headers: {
+      'access-control-allow-origin': [{
+        key: 'Access-Control-Allow-Origin',
+        value: '*'
+      }],
+      'access-control-allow-methods': [{
+        key: 'Access-Control-Allow-Methods',
+        value: 'GET, POST, OPTIONS'
+      }],
+      'access-control-allow-headers': [{
+        key: 'Access-Control-Allow-Headers',
+        value: 'content-type, authorization'
+      }]
+    }
+  }
+}
+```
+
+## README Template
+
+```markdown
+# Function Name
+
+Brief description of what this does.
+
+## External API
+
+- **Service**: [API Name](https://docs-url.com)
+- **Endpoint**: `POST /v1/endpoint`
+- **What it does**: One sentence
+
+## Setup
+
+1. Get API key from [Service Dashboard](https://example.com)
+
+2. Create Lambda function in AWS Console:
+   - Runtime: Node.js 18.x or later
+   - Add environment variables
+   - Deploy as Lambda@Edge
+
+3. Associate with CloudFront distribution:
+   - Choose event type (viewer-request recommended)
+   - Deploy to edge locations
+
+## Usage
+
+```bash
+curl -X POST 'https://d111111abcdef8.cloudfront.net/api/function-name' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "param": "value"
+  }'
+```
+
+## Response
+
+```json
+{
+  "result": "success"
+}
+```
+
+## Local Testing
+
+Use AWS SAM or Lambda Local:
+
+```bash
+sam local invoke FunctionName --event event.json
+```
+```
+
+## Common Patterns
+
+### Parsing request body:
+
+```javascript
+let body = {}
+if (request.body && request.body.data) {
+  const bodyData = Buffer.from(request.body.data, 'base64').toString('utf-8')
+  body = JSON.parse(bodyData)
+}
+```
+
+### Query string parameters:
+
+```javascript
+const querystring = require('querystring')
+const params = querystring.parse(request.querystring)
+const email = params.email
+```
+
+### Request headers:
+
+```javascript
+const authHeader = request.headers.authorization
+  ? request.headers.authorization[0].value
+  : null
+```
+
+### Modify request before forwarding to origin:
+
+```javascript
+exports.handler = async (event) => {
+  const request = event.Records[0].cf.request
+
+  // Add custom header
+  request.headers['x-custom-header'] = [{
+    key: 'X-Custom-Header',
+    value: 'custom-value'
+  }]
+
+  // Forward modified request
+  return request
+}
+```
+
+### Cache key normalization:
+
+```javascript
+exports.handler = async (event) => {
+  const request = event.Records[0].cf.request
+
+  // Normalize query strings for better caching
+  const params = querystring.parse(request.querystring)
+  const normalized = querystring.stringify({
+    // Sort and include only relevant params
+    id: params.id,
+    type: params.type
+  })
+
+  request.querystring = normalized
+  return request
+}
+```
+
+### 301/302 redirects (ultra-fast):
+
+```javascript
+exports.handler = async (event) => {
+  const request = event.Records[0].cf.request
+
+  // Redirect logic
+  if (request.uri === '/old-path') {
+    return {
+      status: '301',
+      statusDescription: 'Moved Permanently',
+      headers: {
+        'location': [{
+          key: 'Location',
+          value: '/new-path'
+        }]
+      }
+    }
+  }
+
+  return request
+}
+```
+
+## Size and Performance Limits
+
+- **Max size**: 1MB (viewer triggers), 50MB (origin triggers)
+- **Timeout**: 5 seconds (viewer), 30 seconds (origin)
+- **Memory**: 128MB (viewer), up to 10GB (origin)
+
+**Keep examples small and fast for viewer triggers**
+
+## Best Practices
+
+1. **Reduce invocations**: Use CloudFront caching where possible
+2. **Optimize duration**: Reuse connections, keep code lightweight
+3. **Regional execution**: Deploy to regions near data sources
+4. **Error handling**: Always return proper CloudFront response format
+5. **Logging**: Use console.log (appears in CloudWatch Logs)
+
+## What NOT to Include
+
+- Heavy npm packages (size limits)
+- Long-running operations (timeout limits)
+- Database connections without pooling
+- File system operations beyond /tmp
+
+## Dependencies
+
+Add to package.json if needed:
+
+```json
+{
+  "name": "example-name",
+  "version": "1.0.0",
+  "dependencies": {
+    "node-fetch": "^3.0.0"
+  }
+}
+```
+
+Deploy with dependencies:
+```bash
+npm install
+zip -r function.zip index.js node_modules/
+```
+
+## When Creating New Examples
+
+1. Check `specs/` for requirements
+2. Create folder: `aws-lambda-edge/example-name/`
+3. Copy template above into `index.js`
+4. Implement the specific API integration
+5. Create README with complete documentation
+6. Test locally with SAM
+7. Keep it simple - one API call, clear pattern
+8. Mind size and timeout limits
+
+## Deployment
+
+Via AWS Console:
+1. Upload zip to Lambda
+2. Publish new version
+3. Associate with CloudFront distribution
+4. Wait for replication to edge locations (5-10 minutes)
+
+Via CloudFormation:
+```yaml
+AWSTemplateFormatVersion: '2010-09-09'
+Resources:
+  EdgeFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: example-name
+      Runtime: nodejs18.x
+      Handler: index.handler
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => { ... }
+      Role: !GetAtt LambdaEdgeRole.Arn
+```
+
+## Key Differences from Other Platforms
+
+- Uses Node.js (not Deno or V8 isolates)
+- CloudFront-specific event structure
+- Response must use CloudFront format
+- Headers are arrays of objects
+- Status codes are strings
+- Triggered by CloudFront events
+- Strict size and timeout limits

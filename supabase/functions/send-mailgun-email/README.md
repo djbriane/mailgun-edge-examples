@@ -19,10 +19,9 @@ Send a single transactional email via Mailgun's API.
    supabase secrets set MAILGUN_DOMAIN=mg.example.com
    ```
 
-3. Optional environment variables:
+3. Optional environment variable:
    ```bash
    supabase secrets set MAILGUN_REGION=us  # or 'eu' for EU region
-   supabase secrets set MAILGUN_DEFAULT_FROM=no-reply@example.com
    ```
 
 4. Deploy the function:
@@ -42,22 +41,31 @@ curl -i --location --request POST \
   --header 'Authorization: Bearer YOUR_ANON_KEY' \
   --header 'Content-Type: application/json' \
   --data '{
+    "from": "no-reply@example.com",
     "to": "user@example.com",
+    "cc": ["manager@example.com"],
+    "bcc": "audit@example.com",
+    "replyTo": "support@example.com",
     "subject": "Welcome!",
     "text": "Hello from Mailgun!",
-    "from": "sender@example.com"
+    "html": "<p>Hello from <strong>Mailgun</strong>!</p>"
   }'
 ```
 
 **Request Body Schema:**
 ```json
 {
-  "to": "string (required, valid email)",
+  "from": "string (required, valid email)",
+  "to": "string (comma-separated list allowed, required)",
+  "cc": "string (optional, comma-separated)",
+  "bcc": "string (optional, comma-separated)",
+  "replyTo": "string (optional, valid email)",
   "subject": "string (required, non-empty)",
-  "text": "string (required, non-empty)",
-  "from": "string (optional, uses MAILGUN_DEFAULT_FROM if omitted)"
+  "text": "string (optional, required if html is missing)",
+  "html": "string (optional, required if text is missing)"
 }
 ```
+At least one of `text` or `html` must be provided.
 
 ### Response
 
@@ -98,7 +106,6 @@ curl -i --location --request POST \
    MAILGUN_API_KEY=key-xxxxx
    MAILGUN_DOMAIN=mg.example.com
    MAILGUN_REGION=us
-   MAILGUN_DEFAULT_FROM=no-reply@example.com
    ```
 
 2. Start Supabase locally:
@@ -130,5 +137,5 @@ curl -i --location --request POST \
 - The function uses HTTP Basic Auth with format: `api:{apiKey}`
 - Returns 202 Accepted immediately after Mailgun accepts the message (fire-and-forget)
 - Supports both US and EU Mailgun regions via `MAILGUN_REGION` environment variable
-- If `from` is not provided in the request, `MAILGUN_DEFAULT_FROM` must be set
+- Each request must include a valid `from` address (Mailgun requires a verified sender)
 

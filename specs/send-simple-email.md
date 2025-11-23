@@ -9,18 +9,24 @@ Send a single transactional email via Mailgun.
 ### Request
 ```json
 {
-  "to": "user@example.com",
+  "from": "sender@example.com",
+  "to": "user@example.com,manager@example.com",
+  "cc": "audit@example.com",
+  "bcc": "legal@example.com,support@example.com",
+  "replyTo": "support@example.com",
   "subject": "Welcome!",
   "text": "Hello from Mailgun!",
-  "from": "sender@example.com"  // optional
+  "html": "<p>Hello from Mailgun!</p>"
 }
 ```
 
 **Validation:**
-- `to` - required, valid email format
+- `from` - required, valid email
+- `to` - required, comma-separated list of valid emails
+- `cc` / `bcc` - optional, comma-separated list of valid emails
+- `replyTo` - optional, valid email
 - `subject` - required, non-empty
-- `text` - required, non-empty
-- `from` - optional, uses `MAILGUN_DEFAULT_FROM` if omitted
+- `text` / `html` - at least one body is required (either or both)
 
 ### Response
 
@@ -79,7 +85,6 @@ formData.append('text', text)
 MAILGUN_API_KEY=key-xxxxx
 MAILGUN_DOMAIN=mg.example.com
 MAILGUN_REGION=us              # optional: us or eu
-MAILGUN_DEFAULT_FROM=no-reply@example.com  # optional
 ```
 
 ## Example Usage
@@ -88,9 +93,12 @@ MAILGUN_DEFAULT_FROM=no-reply@example.com  # optional
 curl -X POST "https://your-function-url/send-email" \
   -H "Content-Type: application/json" \
   -d '{
+    "from": "no-reply@example.com",
     "to": "user@example.com",
+    "cc": ["manager@example.com"],
     "subject": "Welcome",
-    "text": "Thanks for signing up!"
+    "text": "Thanks for signing up!",
+    "html": "<p>Thanks for signing up!</p>"
   }'
 ```
 

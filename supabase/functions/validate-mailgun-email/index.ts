@@ -1,6 +1,18 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { corsHeaders } from '../_shared/cors.ts'
 
+type SupabaseRuntime = {
+  serve: (handler: (req: Request) => Response | Promise<Response>) => void
+  env: {
+    get(key: string): string | undefined
+  }
+}
+
+const {
+  serve,
+  env,
+} = (globalThis as unknown as { Deno: SupabaseRuntime }).Deno
+
 interface ValidateEmailRequest {
   email?: string
 }
@@ -75,7 +87,7 @@ function mapMailgunResponse(data: MailgunValidationResponse): ValidateEmailRespo
   }
 }
 
-Deno.serve(async (req) => {
+serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -123,8 +135,8 @@ Deno.serve(async (req) => {
     }
 
     // Get environment variables
-    const apiKey = Deno.env.get('MAILGUN_API_KEY')
-    const region = Deno.env.get('MAILGUN_REGION') || 'us'
+    const apiKey = env.get('MAILGUN_API_KEY')
+    const region = env.get('MAILGUN_REGION') || 'us'
 
     if (!apiKey) {
       throw new Error('MAILGUN_API_KEY not configured')

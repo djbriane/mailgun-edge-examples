@@ -1,6 +1,18 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { corsHeaders } from '../_shared/cors.ts'
 
+type SupabaseRuntime = {
+  serve: (handler: (req: Request) => Response | Promise<Response>) => void
+  env: {
+    get(key: string): string | undefined
+  }
+}
+
+const {
+  serve,
+  env,
+} = (globalThis as unknown as { Deno: SupabaseRuntime }).Deno
+
 interface SendEmailRequest {
   to: string
   subject: string
@@ -8,94 +20,63 @@ interface SendEmailRequest {
   from?: string
 }
 
-interface SendEmailResponse {
-  id: string
-  message: string
-}
+const jsonResponse = (payload: unknown, status = 200) =>
+  new Response(JSON.stringify(payload), {
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    status,
+  })
 
-interface ErrorResponse {
-  error: string
-  details?: {
-    field?: string
-    message?: string
-    status?: number
-  }
-}
+const validationError = (message: string, field?: string) =>
+  jsonResponse(
+    {
+      error: 'validation_error',
+      details: field ? { field, message } : { message },
+    },
+    400,
+  )
 
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 }
 
-function validateRequest(body: SendEmailRequest): { valid: boolean; error?: ErrorResponse } {
-  if (!body.to || typeof body.to !== 'string' || !isValidEmail(body.to)) {
-    return {
-      valid: false,
-      error: {
-        error: 'validation_error',
-        details: {
-          field: 'to',
-          message: 'Invalid email address',
-        },
-      },
-    }
-  }
-
-  if (!body.subject || typeof body.subject !== 'string' || body.subject.trim().length === 0) {
-    return {
-      valid: false,
-      error: {
-        error: 'validation_error',
-        details: {
-          field: 'subject',
-          message: 'Subject is required and cannot be empty',
-        },
-      },
-    }
-  }
-
-  if (!body.text || typeof body.text !== 'string' || body.text.trim().length === 0) {
-    return {
-      valid: false,
-      error: {
-        error: 'validation_error',
-        details: {
-          field: 'text',
-          message: 'Text content is required and cannot be empty',
-        },
-      },
-    }
-  }
-
-  return { valid: true }
-}
-
-Deno.serve(async (req) => {
+serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    // Parse request body
-    const body: SendEmailRequest = await req.json()
+    // Parse request body (return validation error if JSON is invalid)
+    let body: unknown
+    try {
+      body = await req.json()
+    } catch {
+      return validationError('Request body must be valid JSON')
+    }
 
-    // Validate request
-    const validation = validateRequest(body)
-    if (!validation.valid) {
-      return new Response(
-        JSON.stringify(validation.error),
-        {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 400,
-        },
-      )
+    if (!body || typeof body !== 'object') {
+      return validationError('Request body must be a JSON object')
+    }
+
+    const { to, subject, text, from } = body as Partial<SendEmailRequest>
+
+    if (!to || typeof to !== 'string' || !isValidEmail(to)) {
+      return validationError('Invalid email address', 'to')
+    }
+
+    if (!subject || typeof subject !== 'string' || subject.trim().length === 0) {
+      return validationError('Subject is required and cannot be empty', 'subject')
+    }
+
+    if (!text || typeof text !== 'string' || text.trim().length === 0) {
+      return validationError('Text content is required and cannot be empty', 'text')
     }
 
     // Get environment variables
-    const apiKey = Deno.env.get('MAILGUN_API_KEY')
-    const domain = Deno.env.get('MAILGUN_DOMAIN')
-    const region = Deno.env.get('MAILGUN_REGION') || 'us'
-    const defaultFrom = Deno.env.get('MAILGUN_DEFAULT_FROM')
+    const apiKey = env.get('MAILGUN_API_KEY')
+    const domain = env.get('MAILGUN_DOMAIN')
+    const region = env.get('MAILGUN_REGION') || 'us'
+    const defaultFrom = env.get('MAILGUN_DEFAULT_FROM')
 
     if (!apiKey) {
       throw new Error('MAILGUN_API_KEY not configured')
@@ -106,35 +87,26 @@ Deno.serve(async (req) => {
     }
 
     // Determine from address
-    const from = body.from || defaultFrom
-    if (!from) {
-      return new Response(
-        JSON.stringify({
-          error: 'validation_error',
-          details: {
-            field: 'from',
-            message: 'From address is required. Provide in request or set MAILGUN_DEFAULT_FROM',
-          },
-        }),
-        {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 400,
-        },
+    const finalFrom = from || defaultFrom
+    if (!finalFrom) {
+      return validationError(
+        'From address is required. Provide in request or set MAILGUN_DEFAULT_FROM',
+        'from',
       )
     }
 
     // Build Mailgun endpoint
-    const baseUrl = region === 'eu' 
+    const baseUrl = region === 'eu'
       ? 'https://api.eu.mailgun.net'
       : 'https://api.mailgun.net'
     const url = `${baseUrl}/v3/${domain}/messages`
 
     // Create FormData (Mailgun requires FormData, not JSON)
     const formData = new FormData()
-    formData.append('from', from)
-    formData.append('to', body.to)
-    formData.append('subject', body.subject)
-    formData.append('text', body.text)
+    formData.append('from', finalFrom)
+    formData.append('to', to)
+    formData.append('subject', subject)
+    formData.append('text', text)
 
     // Call Mailgun API
     const response = await fetch(url, {
@@ -147,48 +119,31 @@ Deno.serve(async (req) => {
 
     if (!response.ok) {
       const errorText = await response.text()
-      return new Response(
-        JSON.stringify({
+      return jsonResponse(
+        {
           error: 'mailgun_error',
           details: {
             status: response.status,
             message: errorText || response.statusText,
           },
-        }),
-        {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: response.status >= 500 ? 502 : 400,
         },
+        response.status >= 500 ? 502 : 400,
       )
     }
 
     const data = await response.json()
 
-    // Return success response
-    const successResponse: SendEmailResponse = {
-      id: data.id || data.message?.id || '<unknown>',
-      message: 'queued',
-    }
-
-    return new Response(
-      JSON.stringify(successResponse),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 202,
-      },
-    )
+    // Return Mailgun's response so users can see the exact payload
+    return jsonResponse(data, 202)
   } catch (error) {
-    return new Response(
-      JSON.stringify({
+    return jsonResponse(
+      {
         error: 'mailgun_error',
         details: {
-          message: error.message,
+          message: error instanceof Error ? error.message : String(error),
         },
-      }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500,
       },
+      500,
     )
   }
 })
